@@ -75,6 +75,9 @@ window.Multiplayer = (function() {
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
 
             mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
+            if (roomTopic) {
+                mqttClient.subscribe(roomTopic, { qos: 1 });
+            }
 
             while (connectQueue.length > 0) {
                 const cb = connectQueue.shift();
@@ -85,6 +88,7 @@ window.Multiplayer = (function() {
         mqttClient.on('message', function(topic, payload) {
             try {
                 const data = JSON.parse(payload.toString());
+                console.log('[MQTT INCOMING]', topic, data.type, 'from:', data.from, 'to:', data.target);
                 handleSignalingMessage(topic, data);
             } catch(e) {
                 console.warn('[Multiplayer MQTT parse err]', e);
@@ -117,11 +121,11 @@ window.Multiplayer = (function() {
             } else if (data.type === 'query' && isHost && currentLobby) {
                 broadcastLobbyAnnounce();
             }
-        } else if (roomTopic && topic === roomTopic) {
+        } else if (topic.startsWith('bss/v1/room/')) {
             // Room-wide exchange: ignore messages sent by myself
             if (data.from === myId) return;
 
-            console.log('[Room MSG]', data.type, 'from:', data.from, 'to:', data.target);
+            console.log('[Room MSG]', data.type, 'from:', data.from, 'to:', data.target, 'isHost:', isHost, 'myId:', myId);
 
             if (data.type === 'offer' && isHost && (!data.target || data.target === myId)) {
                 handleClientOffer(data);
