@@ -10,15 +10,19 @@ window.Multiplayer = (function() {
     let mqttClient = null;
     let isMqttConnected = false;
 
-    // WebRTC connections: peerId -> { pc, dc, name }
+    // WebRTC connections: peerId -> { pc, dc, name, pendingCandidates: [] }
     let peerConnections = new Map();
     let remotePlayers = new Map();
+
+    // Standalone mesh for rendering other players
+    let remotePlayerMesh = null;
 
     const RTC_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
         ]
     };
 
@@ -35,11 +39,10 @@ window.Multiplayer = (function() {
         }
 
         updateStatusIndicator('Connecting to signaling broker...');
-        // Public EMQX WSS Broker (Open & Reliable worldwide)
         mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
             clientId: 'bss_' + myId,
             clean: true,
-            connectTimeout: 5000,
+            connectTimeout: 7000,
             reconnectPeriod: 3000
         });
 
@@ -88,17 +91,33 @@ window.Multiplayer = (function() {
                 broadcastLobbyAnnounce();
             }
         } else if (topic === TOPIC_DIRECT) {
-            // Direct WebRTC negotiation messages
             if (data.type === 'offer' && isHost) {
                 handleClientOffer(data);
             } else if (data.type === 'answer' && !isHost) {
                 handleHostAnswer(data);
             } else if (data.type === 'candidate') {
-                const conn = peerConnections.get(data.from);
-                if (conn && conn.pc && data.candidate) {
-                    conn.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
-                }
+                handleIceCandidateMsg(data);
             }
+        }
+    }
+
+    function handleIceCandidateMsg(data) {
+        const conn = peerConnections.get(data.from);
+        if (!conn || !conn.pc) return;
+
+        if (conn.pc.remoteDescription && conn.pc.remoteDescription.type) {
+            conn.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(e => console.warn('ICE add error:', e));
+        } else {
+            // Buffer candidate until remote description is set
+            conn.pendingCandidates.push(data.candidate);
+        }
+    }
+
+    function flushCandidates(conn) {
+        if (!conn || !conn.pc || !conn.pendingCandidates) return;
+        while (conn.pendingCandidates.length > 0) {
+            const cand = conn.pendingCandidates.shift();
+            conn.pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn('ICE flush error:', e));
         }
     }
 
@@ -165,7 +184,7 @@ window.Multiplayer = (function() {
         if (peerConnections.size + 1 >= currentLobby.maxPlayers) return;
 
         const pc = new RTCPeerConnection(RTC_CONFIG);
-        const connObj = { pc: pc, dc: null, name: data.playerName || 'BeeKeeper' };
+        const connObj = { pc: pc, dc: null, name: data.playerName || 'BeeKeeper', pendingCandidates: [] };
         peerConnections.set(clientPeerId, connObj);
 
         pc.onicecandidate = (e) => {
@@ -184,6 +203,8 @@ window.Multiplayer = (function() {
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        flushCandidates(connObj);
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -211,7 +232,7 @@ window.Multiplayer = (function() {
 
             const pc = new RTCPeerConnection(RTC_CONFIG);
             const dc = pc.createDataChannel('bss-p2p', { ordered: false, maxRetransmits: 0 });
-            const connObj = { pc: pc, dc: dc, name: 'Host' };
+            const connObj = { pc: pc, dc: dc, name: 'Host', pendingCandidates: [] };
             peerConnections.set(hostId, connObj);
 
             pc.onicecandidate = (e) => {
@@ -246,7 +267,7 @@ window.Multiplayer = (function() {
                     peerConnections.delete(hostId);
                     try { pc.close(); } catch(e){}
                 }
-            }, 8000);
+            }, 10000);
         });
     }
 
@@ -256,6 +277,7 @@ window.Multiplayer = (function() {
         if (conn && conn.pc) {
             conn.name = data.hostName || 'Host';
             await conn.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            flushCandidates(conn);
         }
     }
 
@@ -316,8 +338,22 @@ window.Multiplayer = (function() {
         mat4.rotateY(rp.modelMatrix, rp.modelMatrix, rp.rotY || 0);
     }
 
+    function initRemoteMesh() {
+        if (remotePlayerMesh || typeof Mesh === 'undefined') return;
+        remotePlayerMesh = new Mesh(false);
+        remotePlayerMesh.setMeshFromFunction(function(box) {
+            // Distinct player avatar (head + body + backpack)
+            box(0, 0, 0, 0.5, 1.0, 0.5, false, [0.4, 0.8, 1.0]); // Body
+            box(0, 0.8, 0, 0.4, 0.4, 0.4, false, [1.0, 0.85, 0.7]); // Head
+            box(0, 0.1, -0.35, 0.4, 0.7, 0.3, false, [0.9, 0.7, 0.1]); // Backpack
+        });
+        remotePlayerMesh.setBuffers();
+    }
+
     function startGame(playerRef) {
         localPlayerRef = playerRef;
+        initRemoteMesh();
+
         if (updateInterval) clearInterval(updateInterval);
         updateInterval = setInterval(broadcastState, 50); // 20 updates per sec
         updateUI();
@@ -342,12 +378,16 @@ window.Multiplayer = (function() {
         }
     }
 
-    function render(gl, glCache, playerMesh) {
-        if (remotePlayers.size === 0 || !playerMesh) return;
+    function render(gl, glCache, fallbackMesh) {
+        if (remotePlayers.size === 0) return;
+        if (!remotePlayerMesh) initRemoteMesh();
+        const meshToRender = remotePlayerMesh || fallbackMesh;
+        if (!meshToRender) return;
+
         for (let rp of remotePlayers.values()) {
             if (rp.modelMatrix) {
                 gl.uniformMatrix4fv(glCache.dynamic_modelMatrix, gl.FALSE, rp.modelMatrix);
-                playerMesh.render();
+                meshToRender.render();
             }
         }
     }

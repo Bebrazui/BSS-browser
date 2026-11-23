@@ -34154,19 +34154,9 @@ function BeeSwarmSimulator(DATA){
         }
     }
 
-    if(window.Multiplayer&&window.Multiplayer.isInMultiplayer()){
-        window.Multiplayer.startGame(player)
-    }
-
     function SAVE_GAME(){
-
         let code=GENERATE_SAVE_CODE()
-
-        //eeeeeeeeeeeeeeeeeeeeeeeeee
-        // console.error(code)
-
         saveToDB(DATA.id,{
-            
             lastSaved:Date.now(),
             saveCode:code,
             name:DATA.name
@@ -34174,6 +34164,10 @@ function BeeSwarmSimulator(DATA){
     }
 
     SAVE_GAME()
+
+    if(window.Multiplayer&&window.Multiplayer.isInMultiplayer()){
+        window.Multiplayer.startGame(player,gl,dynamicGeometryProgram)
+    }
 
     window.addEventListener('beforeunload',function(e){
 
