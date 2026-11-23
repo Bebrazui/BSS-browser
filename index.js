@@ -21636,6 +21636,26 @@ function BeeSwarmSimulator(DATA){
     let playerMesh=new Mesh(false)
 
     let shopGearMesh=new Mesh(false)
+    let eggShopCustomMesh=null
+    let eggShopModelMatrix=null
+    if(window.EGG_SHOP_BIN){
+        try {
+            let binaryStr = atob(window.EGG_SHOP_BIN)
+            let len = binaryStr.length
+            let bytes = new Uint8Array(len)
+            for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i)
+            let header = new Uint32Array(bytes.buffer, 0, 2)
+            let vertCount = header[0], indexCount = header[1]
+            let verts = new Float32Array(bytes.buffer, 8, vertCount * 9)
+            let indices = new Uint16Array(bytes.buffer, 8 + vertCount * 9 * 4, indexCount)
+            
+            eggShopCustomMesh = new Mesh(false, verts, indices)
+            eggShopCustomMesh.setBuffers()
+            eggShopModelMatrix = mat4.fromTranslation([], [10.25, 0.5, 18.75])
+        } catch(e) {
+            console.error('Failed to load egg shop mesh:', e)
+        }
+    }
 
     let gear=window.playerGear
 
@@ -34624,6 +34644,11 @@ function BeeSwarmSimulator(DATA){
         
         gl.uniformMatrix4fv(glCache.dynamic_modelMatrix,gl.FALSE,MATH.IDENTITY_MATRIX)
         shopGearMesh.render()
+        
+        if(eggShopCustomMesh){
+            gl.uniformMatrix4fv(glCache.dynamic_modelMatrix,gl.FALSE,eggShopModelMatrix)
+            eggShopCustomMesh.render()
+        }
         
         if(player.zoom>1){
 
