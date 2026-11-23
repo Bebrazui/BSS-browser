@@ -22,9 +22,7 @@ window.Multiplayer = (function() {
 
     const RELAYS = [
         'wss://nos.lol',
-        'wss://primal.net',
         'wss://nostr.wine',
-        'wss://relay.damus.io',
         'wss://relay.snort.social'
     ];
 
@@ -64,10 +62,10 @@ window.Multiplayer = (function() {
             pool = new Nostr.SimplePool();
         }
 
-        // Subscribe to BSS Game channel (tag: bss-v2)
+        // Subscribe to BSS Game channel (filter must be an Object, not Array)
         const sub = pool.subscribeMany(
             RELAYS,
-            [{ kinds: [20001], '#t': ['bss-v2'], since: Math.floor(Date.now() / 1000) - 10 }],
+            { kinds: [20001], '#t': ['bss-v2'], since: Math.floor(Date.now() / 1000) - 15 },
             {
                 onevent(event) {
                     try {
