@@ -42,7 +42,7 @@ window.Multiplayer = (function() {
     };
 
     const TOPIC_LOBBIES = 'bss/v1/lobbies';
-    const TOPIC_DIRECT = 'bss/v1/user/' + myId;
+    let roomTopic = null;
 
     let pendingLobbiesCallback = null;
     let knownLobbies = new Map();
@@ -75,10 +75,6 @@ window.Multiplayer = (function() {
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
 
             mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
-            mqttClient.subscribe(TOPIC_DIRECT, { qos: 1 }, function(err) {
-                if (err) console.error('[Signaling] Failed to subscribe to direct topic:', err);
-                else console.log('[Signaling] Subscribed to direct topic:', TOPIC_DIRECT);
-            });
 
             while (connectQueue.length > 0) {
                 const cb = connectQueue.shift();
@@ -89,7 +85,6 @@ window.Multiplayer = (function() {
         mqttClient.on('message', function(topic, payload) {
             try {
                 const data = JSON.parse(payload.toString());
-                console.log('[Multiplayer MQTT msg]', topic, data.type, 'from:', data.from, 'host:', data.hostId);
                 handleSignalingMessage(topic, data);
             } catch(e) {
                 console.warn('[Multiplayer MQTT parse err]', e);
@@ -122,12 +117,17 @@ window.Multiplayer = (function() {
             } else if (data.type === 'query' && isHost && currentLobby) {
                 broadcastLobbyAnnounce();
             }
-        } else if (topic === TOPIC_DIRECT) {
-            if (data.type === 'offer' && isHost) {
+        } else if (roomTopic && topic === roomTopic) {
+            // Room-wide exchange: ignore messages sent by myself
+            if (data.from === myId) return;
+
+            console.log('[Room MSG]', data.type, 'from:', data.from, 'to:', data.target);
+
+            if (data.type === 'offer' && isHost && (!data.target || data.target === myId)) {
                 handleClientOffer(data);
-            } else if (data.type === 'answer' && !isHost) {
+            } else if (data.type === 'answer' && !isHost && data.target === myId) {
                 handleHostAnswer(data);
-            } else if (data.type === 'candidate') {
+            } else if (data.type === 'candidate' && data.target === myId) {
                 handleIceCandidateMsg(data);
             }
         }
@@ -213,6 +213,11 @@ window.Multiplayer = (function() {
                 hostId: myId
             };
 
+            roomTopic = 'bss/v1/room/' + lobId;
+            mqttClient.subscribe(roomTopic, { qos: 1 }, function() {
+                console.log('[Host] Subscribed to room topic:', roomTopic);
+            });
+
             if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(broadcastLobbyAnnounce, 2500);
             broadcastLobbyAnnounce();
@@ -226,21 +231,24 @@ window.Multiplayer = (function() {
         const clientPeerId = data.from;
         if (peerConnections.size + 1 >= currentLobby.maxPlayers) return;
 
+        console.log('[Host] Processing client offer from:', clientPeerId);
         const pc = new RTCPeerConnection(RTC_CONFIG);
         const connObj = { pc: pc, dc: null, name: data.playerName || 'BeeKeeper', pendingCandidates: [] };
         peerConnections.set(clientPeerId, connObj);
 
         pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                mqttClient.publish('bss/v1/user/' + clientPeerId, JSON.stringify({
+            if (e.candidate && roomTopic) {
+                mqttClient.publish(roomTopic, JSON.stringify({
                     type: 'candidate',
                     from: myId,
+                    target: clientPeerId,
                     candidate: e.candidate
                 }));
             }
         };
 
         pc.ondatachannel = (e) => {
+            console.log('[Host] Received DataChannel from client:', clientPeerId);
             connObj.dc = e.channel;
             setupDataChannel(clientPeerId, connObj);
         };
@@ -251,9 +259,10 @@ window.Multiplayer = (function() {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        mqttClient.publish('bss/v1/user/' + clientPeerId, JSON.stringify({
+        mqttClient.publish(roomTopic, JSON.stringify({
             type: 'answer',
             from: myId,
+            target: clientPeerId,
             answer: answer,
             hostName: myName,
             lobby: currentLobby
@@ -272,51 +281,63 @@ window.Multiplayer = (function() {
 
             currentLobby = lob;
             const hostId = lob.hostId;
+            roomTopic = 'bss/v1/room/' + lobbyId;
 
-            const pc = new RTCPeerConnection(RTC_CONFIG);
-            const dc = pc.createDataChannel('bss-p2p', { ordered: false, maxRetransmits: 0 });
-            const connObj = { pc: pc, dc: dc, name: 'Host', pendingCandidates: [] };
-            peerConnections.set(hostId, connObj);
+            mqttClient.subscribe(roomTopic, { qos: 1 }, function() {
+                console.log('[Client] Subscribed to room topic:', roomTopic);
+                startP2PHandshake();
+            });
 
-            pc.onicecandidate = (e) => {
-                if (e.candidate) {
-                    mqttClient.publish('bss/v1/user/' + hostId, JSON.stringify({
-                        type: 'candidate',
+            function startP2PHandshake() {
+                const pc = new RTCPeerConnection(RTC_CONFIG);
+                const dc = pc.createDataChannel('bss-p2p', { ordered: false, maxRetransmits: 0 });
+                const connObj = { pc: pc, dc: dc, name: 'Host', pendingCandidates: [] };
+                peerConnections.set(hostId, connObj);
+
+                pc.onicecandidate = (e) => {
+                    if (e.candidate && roomTopic) {
+                        mqttClient.publish(roomTopic, JSON.stringify({
+                            type: 'candidate',
+                            from: myId,
+                            target: hostId,
+                            candidate: e.candidate
+                        }));
+                    }
+                };
+
+                setupDataChannel(hostId, connObj, () => {
+                    if (joinTimeout) clearTimeout(joinTimeout);
+                    if (onSuccess) onSuccess(currentLobby);
+                });
+
+                pc.createOffer().then(offer => {
+                    return pc.setLocalDescription(offer);
+                }).then(() => {
+                    console.log('[Client] Sending offer to host:', hostId, 'in room:', roomTopic);
+                    mqttClient.publish(roomTopic, JSON.stringify({
+                        type: 'offer',
                         from: myId,
-                        candidate: e.candidate
+                        target: hostId,
+                        offer: pc.localDescription,
+                        playerName: myName
                     }));
-                }
-            };
+                });
 
-            setupDataChannel(hostId, connObj, () => {
-                if (joinTimeout) clearTimeout(joinTimeout);
-                if (onSuccess) onSuccess(currentLobby);
-            });
-
-            pc.createOffer().then(offer => {
-                return pc.setLocalDescription(offer);
-            }).then(() => {
-                mqttClient.publish('bss/v1/user/' + hostId, JSON.stringify({
-                    type: 'offer',
-                    from: myId,
-                    offer: pc.localDescription,
-                    playerName: myName
-                }));
-            });
-
-            joinTimeout = setTimeout(() => {
-                if (connObj.dc && connObj.dc.readyState !== 'open') {
-                    console.warn('[WebRTC] Timeout. Host state:', pc.connectionState, 'ICE state:', pc.iceConnectionState, 'Signaling:', pc.signalingState);
-                    if (onError) onError('Failed to join lobby: P2P connection timed out (Хост недоступен или уже закрыл лобби)');
-                    peerConnections.delete(hostId);
-                    try { pc.close(); } catch(e){}
-                }
-            }, 10000);
+                joinTimeout = setTimeout(() => {
+                    if (connObj.dc && connObj.dc.readyState !== 'open') {
+                        console.warn('[WebRTC] Timeout. Host state:', pc.connectionState, 'ICE state:', pc.iceConnectionState, 'Signaling:', pc.signalingState);
+                        if (onError) onError('P2P connection timed out (Хост недоступен или уже закрыл лобби)');
+                        peerConnections.delete(hostId);
+                        try { pc.close(); } catch(e){}
+                    }
+                }, 10000);
+            }
         });
     }
 
     async function handleHostAnswer(data) {
         const hostId = data.from;
+        console.log('[Client] Received answer from host:', hostId);
         const conn = peerConnections.get(hostId);
         if (conn && conn.pc) {
             conn.name = data.hostName || 'Host';
