@@ -21659,6 +21659,29 @@ function BeeSwarmSimulator(DATA){
         }
     }
 
+    let ticketDispenserCustomMesh=null
+    let ticketDispenserModelMatrix=null
+    if(window.TICKET_DISPENSER_BIN){
+        try {
+            let binaryStr = atob(window.TICKET_DISPENSER_BIN)
+            let len = binaryStr.length
+            let bytes = new Uint8Array(len)
+            for (let i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i)
+            let header = new Uint32Array(bytes.buffer, 0, 2)
+            let vertCount = header[0], indexCount = header[1]
+            let verts = new Float32Array(bytes.buffer, 8, vertCount * 9)
+            let indices = new Uint16Array(bytes.buffer, 8 + vertCount * 9 * 4, indexCount)
+            
+            ticketDispenserCustomMesh = new Mesh(false, verts, indices)
+            ticketDispenserCustomMesh.setBuffers()
+            // Позиционируем диспенсер на координатах 10.25, -1.5, 18.75 с поворотом 90 градусов
+            let q = quat.fromEuler([], 0, 90, 0)
+            ticketDispenserModelMatrix = mat4.fromRotationTranslation([], q, [10.25, -1.5, 18.75])
+        } catch(e) {
+            console.error('Failed to load ticket dispenser mesh:', e)
+        }
+    }
+
     let gear=window.playerGear
 
     gear.tool={
@@ -34649,6 +34672,11 @@ function BeeSwarmSimulator(DATA){
         if(eggShopCustomMesh){
             gl.uniformMatrix4fv(glCache.dynamic_modelMatrix,gl.FALSE,eggShopModelMatrix)
             eggShopCustomMesh.render()
+        }
+        
+        if(ticketDispenserCustomMesh){
+            gl.uniformMatrix4fv(glCache.dynamic_modelMatrix,gl.FALSE,ticketDispenserModelMatrix)
+            ticketDispenserCustomMesh.render()
         }
         
         if(player.zoom>1){
