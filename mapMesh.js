@@ -1423,8 +1423,10 @@ box(x,y+3.5*0.5,z,2,3.5,2,[0,a,0],[1,1,1],true,false,false);
 }
 
 // shop(11.25,-1.5,14.75,45,1,0.1,0.1,-1.25,0,-1.25,true) // completely replaced by custom 3D Egg Shop
-// Basic Egg shop pedestal handled by custom 3D Egg Shop
-// shop(10,-1.5,13.5,45,1,0.1,0.1,0,0,0,true)
+// Basic Egg shop floor cylinders (white pad and red ring)
+cylinder(10,-1.5,13.5,3.15,0.1,17,1,1,1,1,-90,0,0);
+cylinder(10,-1.5,13.5,3.35,0.05,17,1,0.1,0.1,1,-90,0,0);
+box(10.5,-1.5+3.5*0.5,15.2,2,3.5,2,[0,45,0],[1,1,1],true,false,false);
 shop(23.5,-2.5,41,0,1,0.1,0.1,0,1.15,-2)
 shop(-30.5,2,46,0,1.2,0.4,1.2,2,0,0)
 shop(32,8.75,50.25,45,1,0.1,0.1,1.5,0,-1.5)
