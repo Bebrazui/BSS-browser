@@ -1,7 +1,7 @@
 const fs = require('fs');
 const zlib = require('zlib');
 
-// 1. Декодируем текстуру Part3_diff.png (капелька меда)
+// 1. Декодируем текстуру Part3_diff.png (88x88)
 const pngBuf = fs.readFileSync('resources/Part3_diff.png');
 let idats = [];
 let offset = 8, width, height;
@@ -150,20 +150,14 @@ function addVert(tok, mtlName) {
     indices.push(idx);
 }
 
-// 3. Выпекаем капельку меда на грань Part3
-// Координаты Part3 из ticket.obj:
-// v -145.377 16.4973 204.564 (TopLeft)
-// v -138.256 16.4973 204.59  (TopRight)
-// v -145.377 9.66097 204.564 (BotLeft)
-// v -138.256 9.66097 204.59  (BotRight)
-// Нормаль: (0, 0, -1)
+// 3. Выпекаем капельку меда на грань Part3 с высоким разрешением (88x88 без пикселизации)
 const pTopLeft  = [ -145.377, 16.4973, 204.564 ];
 const pTopRight = [ -138.256, 16.4973, 204.59 ];
 const pBotLeft  = [ -145.377, 9.66097, 204.564 ];
 const pBotRight = [ -138.256, 9.66097, 204.59 ];
 
-const offsetOut = -0.04; // Вдоль нормали (0, 0, -1), т.е. z уменьшается
-const N = 44;
+const offsetOut = -0.04;
+const N = 88;
 
 function getPart3Point(u, v) {
     const x = (1 - u) * ((1 - v) * pBotLeft[0] + v * pTopLeft[0]) + u * ((1 - v) * pBotRight[0] + v * pTopRight[0]);
@@ -179,7 +173,7 @@ function getPart3Point(u, v) {
 for (let j = 0; j < N; j++) {
     const v0 = j / N;
     const v1 = (j + 1) / N;
-    const py = Math.floor((1 - (j + 0.5) / N) * 88);
+    const py = 87 - j;
 
     let curKey = null;
     let curCol = null;
@@ -189,20 +183,19 @@ for (let j = 0; j < N; j++) {
         let key = null;
         let col = null;
         if (i < N) {
-            const px = Math.floor(((i + 0.5) / N) * 88);
-            const idx = (py * 88 + px) * 4;
+            const idx = (py * 88 + i) * 4;
             const r = img[idx], g = img[idx + 1], b = img[idx + 2], a = img[idx + 3];
 
             if (a >= 50) {
                 if (r > 160 && g > 110 && b < 60) {
                     key = 'H';
-                    col = [1.0, 0.72, 0.05]; // Медовый золотистый
+                    col = [1.0, 0.72, 0.05];
                 } else if (r > 200 && g > 170) {
                     key = 'HL';
-                    col = [1.0, 0.88, 0.35]; // Блик меда
+                    col = [1.0, 0.88, 0.35];
                 } else {
                     key = 'O';
-                    col = [0.12, 0.12, 0.15]; // Черный контур
+                    col = [0.12, 0.12, 0.15];
                 }
             }
         }
@@ -212,10 +205,10 @@ for (let j = 0; j < N; j++) {
                 const u0 = startI / N;
                 const u1 = i / N;
 
-                const p0 = getPart3Point(u0, v0); // bot-left
-                const p1 = getPart3Point(u1, v0); // bot-right
-                const p2 = getPart3Point(u1, v1); // top-right
-                const p3 = getPart3Point(u0, v1); // top-left
+                const p0 = getPart3Point(u0, v0);
+                const p1 = getPart3Point(u1, v0);
+                const p2 = getPart3Point(u1, v1);
+                const p3 = getPart3Point(u0, v1);
 
                 const qStart = uniqueVerts.length / 9;
                 uniqueVerts.push(
@@ -224,7 +217,6 @@ for (let j = 0; j < N; j++) {
                     +p2[0].toFixed(3), +p2[1].toFixed(3), +p2[2].toFixed(3), curCol[0], curCol[1], curCol[2], 0, 0, -1,
                     +p3[0].toFixed(3), +p3[1].toFixed(3), +p3[2].toFixed(3), curCol[0], curCol[1], curCol[2], 0, 0, -1
                 );
-                // Нормаль смотрит на -Z, так что CCW обход со стороны наблюдателя: p0->p1->p2->p3
                 indices.push(qStart, qStart + 2, qStart + 1, qStart, qStart + 3, qStart + 2);
             }
             curKey = key;
@@ -249,4 +241,4 @@ fs.writeFileSync('resources/ticket_dispenser.bin', totalBinary);
 
 const b64 = totalBinary.toString('base64');
 fs.writeFileSync('resources/model_ticket_dispenser.js', 'window.TICKET_DISPENSER_BIN = "' + b64 + '";\n');
-console.log('Ticket dispenser model generated! Verts:', uniqueVerts.length / 9, 'indices:', indices.length);
+console.log('Ticket dispenser model regenerated with high resolution 88x88 honey drop! Verts:', uniqueVerts.length / 9, 'indices:', indices.length);

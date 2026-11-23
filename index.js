@@ -21674,9 +21674,9 @@ function BeeSwarmSimulator(DATA){
             
             ticketDispenserCustomMesh = new Mesh(false, verts, indices)
             ticketDispenserCustomMesh.setBuffers()
-            // Позиционируем диспенсер на координатах 10.25, -1.5, 18.75 с поворотом 90 градусов
-            let q = quat.fromEuler([], 0, 90, 0)
-            ticketDispenserModelMatrix = mat4.fromRotationTranslation([], q, [10.25, -1.5, 18.75])
+            // Позиционируем диспенсер вдоль забора лицом к игроку (-90 градусов), башня у лотка
+            let q = quat.fromEuler([], 0, -90, 0)
+            ticketDispenserModelMatrix = mat4.fromRotationTranslation([], q, [11.8, -1.5, 19.3])
         } catch(e) {
             console.error('Failed to load ticket dispenser mesh:', e)
         }

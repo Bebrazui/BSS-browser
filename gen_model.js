@@ -1,7 +1,7 @@
 const fs = require('fs');
 const zlib = require('zlib');
 
-// 1. Декодируем текстуру Backglass2_diff.png
+// 1. Декодируем текстуру Backglass2_diff.png (88x88)
 const pngBuf = fs.readFileSync('resources/Backglass2_diff.png');
 let idats = [];
 let offset = 8, width, height;
@@ -150,7 +150,7 @@ function addVert(tok, mtlName) {
     indices.push(idx);
 }
 
-// 3. Выпекаем точную текстуру яйца из Backglass2_diff.png на каждый из 4 экранов
+// 3. Выпекаем текстуру яйца с полным 1:1 разрешением 88x88 без пикселизации
 const glassScreens = [
     { name: 'Front', f: [1489, 1490, 1491, 1492] },
     { name: 'Right', f: [671, 672, 673, 674] },
@@ -158,8 +158,8 @@ const glassScreens = [
     { name: 'Left',  f: [837, 838, 839, 840] }
 ];
 
-const N = 44; // Сетка 44x44 дает четкий контур яйца
-const offsetOut = 0.05; // Смещение наружу от экрана для избежания z-fighting
+const N = 88;
+const offsetOut = 0.05;
 
 for (let g of glassScreens) {
     const pTopRight = positions[g.f[0] - 1];
@@ -167,7 +167,6 @@ for (let g of glassScreens) {
     const pBotRight = positions[g.f[2] - 1];
     const pBotLeft  = positions[g.f[3] - 1];
 
-    // Нормаль экрана наружу
     const tx = pTopRight[0] - pTopLeft[0];
     const tz = pTopRight[2] - pTopLeft[2];
     const uy = pTopLeft[1] - pBotLeft[1];
@@ -177,7 +176,6 @@ for (let g of glassScreens) {
     const normX = nx / nlen;
     const normZ = nz / nlen;
 
-    // Функция интерполяции точки на экране (u: 0..1 слева направо, v: 0..1 снизу вверх)
     function getPoint(u, v) {
         const x = (1 - u) * ((1 - v) * pBotLeft[0] + v * pTopLeft[0]) + u * ((1 - v) * pBotRight[0] + v * pTopRight[0]);
         const y = (1 - u) * ((1 - v) * pBotLeft[1] + v * pTopLeft[1]) + u * ((1 - v) * pBotRight[1] + v * pTopRight[1]);
@@ -189,30 +187,29 @@ for (let g of glassScreens) {
         return [scaledX, scaledY, scaledZ];
     }
 
-    // Сканируем строки текстуры снизу вверх (v от 0 до 1, py от height-1 до 0)
     for (let j = 0; j < N; j++) {
         const v0 = j / N;
         const v1 = (j + 1) / N;
-        const py = Math.floor((1 - (j + 0.5) / N) * 88);
+        const py = 87 - j;
 
         let curKey = null;
+        let curCol = null;
         let startI = 0;
 
         for (let i = 0; i <= N; i++) {
             let key = null;
             let col = null;
             if (i < N) {
-                const px = Math.floor(((i + 0.5) / N) * 88);
-                const idx = (py * 88 + px) * 4;
+                const idx = (py * 88 + i) * 4;
                 const r = img[idx], g = img[idx + 1], b = img[idx + 2], a = img[idx + 3];
 
                 if (a >= 50) {
                     if (r > 150 && g > 150) {
                         key = 'Y';
-                        col = [1.0, 0.85, 0.05]; // Желтый цвет яйца
+                        col = [1.0, 0.85, 0.05];
                     } else {
                         key = 'B';
-                        col = [0.10, 0.10, 0.12]; // Черный контур и полоса яйца
+                        col = [0.10, 0.10, 0.12];
                     }
                 }
             }
@@ -222,10 +219,10 @@ for (let g of glassScreens) {
                     const u0 = startI / N;
                     const u1 = i / N;
 
-                    const p0 = getPoint(u0, v0); // bot-left
-                    const p1 = getPoint(u1, v0); // bot-right
-                    const p2 = getPoint(u1, v1); // top-right
-                    const p3 = getPoint(u0, v1); // top-left
+                    const p0 = getPoint(u0, v0);
+                    const p1 = getPoint(u1, v0);
+                    const p2 = getPoint(u1, v1);
+                    const p3 = getPoint(u0, v1);
 
                     const qStart = uniqueVerts.length / 9;
                     uniqueVerts.push(
@@ -259,4 +256,4 @@ fs.writeFileSync('resources/egg_shop.bin', totalBinary);
 
 const b64 = totalBinary.toString('base64');
 fs.writeFileSync('resources/model_egg_shop.js', 'window.EGG_SHOP_BIN = "' + b64 + '";\n');
-console.log('Successfully baked exact Backglass2_diff.png egg emblems onto red screen! Verts:', uniqueVerts.length / 9, 'indices:', indices.length);
+console.log('Egg shop generated with high resolution 88x88 emblems! Verts:', uniqueVerts.length / 9, 'indices:', indices.length);
