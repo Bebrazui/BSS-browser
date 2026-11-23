@@ -47,21 +47,29 @@ window.Multiplayer = (function() {
     let pendingLobbiesCallback = null;
     let knownLobbies = new Map();
 
+    let isConnectingMqtt = false;
+    let connectQueue = [];
+
     function initSignaling(onReady) {
         if (mqttClient && isMqttConnected) {
             if (onReady) onReady();
             return;
         }
 
+        if (onReady) connectQueue.push(onReady);
+        if (isConnectingMqtt) return;
+        isConnectingMqtt = true;
+
         updateStatusIndicator('Connecting to signaling broker...');
         mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
             clientId: 'bss_' + myId,
             clean: true,
-            connectTimeout: 7000,
-            reconnectPeriod: 3000
+            connectTimeout: 8000,
+            reconnectPeriod: 2500
         });
 
         mqttClient.on('connect', function() {
+            isConnectingMqtt = false;
             isMqttConnected = true;
             console.log('[Multiplayer] Signaling connected:', myId);
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
@@ -69,7 +77,10 @@ window.Multiplayer = (function() {
             mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
             mqttClient.subscribe(TOPIC_DIRECT, { qos: 1 });
 
-            if (onReady) onReady();
+            while (connectQueue.length > 0) {
+                const cb = connectQueue.shift();
+                try { cb(); } catch(e){}
+            }
         });
 
         mqttClient.on('message', function(topic, payload) {
