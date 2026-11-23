@@ -21651,9 +21651,9 @@ function BeeSwarmSimulator(DATA){
             
             eggShopCustomMesh = new Mesh(false, verts, indices)
             eggShopCustomMesh.setBuffers()
-            // Позиционируем точно на постамент Basic Egg Shop (x: 11.25, y: -0.25, z: 14.75) с поворотом -45 градусов
+            // Позиционируем точно в центр красного круга basicEgg_shop (x: 10, y: -1.5, z: 13.5) с поворотом -45 градусов
             let q = quat.fromEuler([], 0, -45, 0)
-            eggShopModelMatrix = mat4.fromRotationTranslation([], q, [11.25, -0.25, 14.75])
+            eggShopModelMatrix = mat4.fromRotationTranslation([], q, [10, -1.5, 13.5])
         } catch(e) {
             console.error('Failed to load egg shop mesh:', e)
         }
