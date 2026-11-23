@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>P2P Diagnostics & Self-Test</title>
+    <script src="resources/mqtt.min.js"></script>
+    <style>
+        body { background: #121212; color: #eee; font-family: monospace; padding: 20px; line-height: 1.5; }
+        .log { margin: 4px 0; padding: 4px 8px; border-radius: 4px; }
+        .success { background: #1b4d2e; color: #75f0a0; }
+        .fail { background: #4d1b1b; color: #f07575; }
+        .info { background: #1f2d3d; color: #8ec5fc; }
+        button { background: #ffcc00; color: #111; border: none; padding: 10px 20px; font-weight: bold; font-size: 14px; cursor: pointer; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <h2>Bee Swarm Simulator — P2P Self-Test & Diagnostic Tool</h2>
+    <p>Этот тест прямо в браузере запускает виртуального Хоста и виртуального Клиента, проводит полный обмен SDP offer/answer через MQTT и замеряет создание P2P DataChannel.</p>
+    <button onclick="runDiagnostic()">Запустить тест P2P прямо сейчас</button>
+    <div id="output" style="margin-top:20px;"></div>
+
+    <script>
+        function log(msg, type='info') {
+            const out = document.getElementById('output');
+            const d = document.createElement('div');
+            d.className = 'log ' + type;
+            d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+            out.appendChild(d);
+        }
+
+        const RTC_CONFIG = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun.cloudflare.com:3478' },
+                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+            ]
+        };
+
+        async function runDiagnostic() {
+            document.getElementById('output').innerHTML = '';
+            log('Старт теста сигналинга и P2P соединения...', 'info');
+
+            const hostId = 'test_host_' + Math.random().toString(36).substr(2, 6);
+            const clientId = 'test_client_' + Math.random().toString(36).substr(2, 6);
+
+            const mqttHost = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: hostId, clean: true });
+            const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clientId: clientId, clean: true });
+
+            let hostPc = null;
+            let clientPc = null;
+            let hostDc = null;
+            let clientDc = null;
+
+            await new Promise(res => {
+                let hReady = false, cReady = false;
+                mqttHost.on('connect', () => {
+                    log('Хост подключился к MQTT брокеру', 'success');
+                    mqttHost.subscribe('bss/test/' + hostId, () => {
+                        hReady = true;
+                        if (cReady) res();
+                    });
+                });
+                mqttClient.on('connect', () => {
+                    log('Клиент подключился к MQTT брокеру', 'success');
+                    mqttClient.subscribe('bss/test/' + clientId, () => {
+                        cReady = true;
+                        if (hReady) res();
+                    });
+                });
+            });
+
+            // Настройка P2P
+            hostPc = new RTCPeerConnection(RTC_CONFIG);
+            clientPc = new RTCPeerConnection(RTC_CONFIG);
+
+            // Host listeners
+            hostPc.onicecandidate = e => {
+                if (e.candidate) {
+                    mqttHost.publish('bss/test/' + clientId, JSON.stringify({ type: 'candidate', cand: e.candidate }));
+                }
+            };
+            hostPc.ondatachannel = e => {
+                hostDc = e.channel;
+                log('Хост получил входящий DataChannel!', 'success');
+                hostDc.onopen = () => log('Хост: DataChannel открыт!', 'success');
+                hostDc.onmessage = ev => {
+                    log('Хост получил тестовое сообщение: ' + ev.data, 'success');
+                    hostDc.send('PONG_FROM_HOST');
+                };
+            };
+
+            // Client listeners
+            clientDc = clientPc.createDataChannel('testChannel');
+            clientDc.onopen = () => {
+                log('Клиент: DataChannel открыт! Отправляю PING...', 'success');
+                clientDc.send('PING_FROM_CLIENT');
+            };
+            clientDc.onmessage = ev => {
+                log('Клиент получил ответ: ' + ev.data, 'success');
+                log('ТЕСТ УСПЕШНО ПРОЙДЕН! WebRTC P2P И СИГНАЛИНГ РАБОТАЮТ НА 100%!', 'success');
+                cleanup();
+            };
+
+            clientPc.onicecandidate = e => {
+                if (e.candidate) {
+                    mqttClient.publish('bss/test/' + hostId, JSON.stringify({ type: 'candidate', cand: e.candidate }));
+                }
+            };
+
+            // MQTT Message routing
+            mqttHost.on('message', async (t, p) => {
+                const msg = JSON.parse(p.toString());
+                if (msg.type === 'offer') {
+                    log('Хост получил Offer от клиента', 'info');
+                    await hostPc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+                    const answer = await hostPc.createAnswer();
+                    await hostPc.setLocalDescription(answer);
+                    mqttHost.publish('bss/test/' + clientId, JSON.stringify({ type: 'answer', answer: answer }));
+                } else if (msg.type === 'candidate') {
+                    await hostPc.addIceCandidate(new RTCIceCandidate(msg.cand));
+                }
+            });
+
+            mqttClient.on('message', async (t, p) => {
+                const msg = JSON.parse(p.toString());
+                if (msg.type === 'answer') {
+                    log('Клиент получил Answer от хоста', 'info');
+                    await clientPc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+                } else if (msg.type === 'candidate') {
+                    await clientPc.addIceCandidate(new RTCIceCandidate(msg.cand));
+                }
+            });
+
+            // Start handshake
+            log('Клиент создает Offer...', 'info');
+            const offer = await clientPc.createOffer();
+            await clientPc.setLocalDescription(offer);
+            mqttClient.publish('bss/test/' + hostId, JSON.stringify({ type: 'offer', offer: offer }));
+
+            const timeout = setTimeout(() => {
+                log('ОШИБКА: P2P таймаут через 10 секунд. WebRTC трафик блокируется провайдером или фаерволом.', 'fail');
+                cleanup();
+            }, 10000);
+
+            function cleanup() {
+                clearTimeout(timeout);
+                try { mqttHost.end(); } catch(e){}
+                try { mqttClient.end(); } catch(e){}
+            }
+        }
+    </script>
+</body>
+</html>
