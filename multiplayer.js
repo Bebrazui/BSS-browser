@@ -370,6 +370,14 @@ window.Multiplayer = (function() {
         if (!rp) {
             rp = {
                 name: data.name || 'BeeKeeper',
+                currX: data.x,
+                currY: data.y,
+                currZ: data.z,
+                currRotY: data.rotY || 0,
+                targetX: data.x,
+                targetY: data.y,
+                targetZ: data.z,
+                targetRotY: data.rotY || 0,
                 modelMatrix: new Float32Array(16)
             };
             remotePlayers.set(peerId, rp);
@@ -377,14 +385,10 @@ window.Multiplayer = (function() {
         }
 
         rp.name = data.name || rp.name;
-        rp.x = data.x;
-        rp.y = data.y;
-        rp.z = data.z;
-        rp.rotY = data.rotY;
-
-        mat4.identity(rp.modelMatrix);
-        mat4.translate(rp.modelMatrix, rp.modelMatrix, [rp.x, rp.y, rp.z]);
-        mat4.rotateY(rp.modelMatrix, rp.modelMatrix, rp.rotY || 0);
+        rp.targetX = data.x;
+        rp.targetY = data.y;
+        rp.targetZ = data.z;
+        rp.targetRotY = data.rotY || 0;
     }
 
     function initRemoteMesh() {
@@ -402,25 +406,52 @@ window.Multiplayer = (function() {
         localPlayerRef = playerRef;
         initRemoteMesh();
 
+        const toggleBtn = document.getElementById('mpChatToggleBtn');
         const chatBox = document.getElementById('mpChatContainer');
-        if (chatBox) chatBox.style.display = 'flex';
+        if (toggleBtn) toggleBtn.style.display = 'flex';
+        if (chatBox) chatBox.style.display = 'none'; // Closed by default
         initChatHandlers();
 
         if (updateInterval) clearInterval(updateInterval);
-        updateInterval = setInterval(broadcastState, 50);
+        updateInterval = setInterval(broadcastState, 40); // 25 times per sec
         updateUI();
     }
 
     function initChatHandlers() {
+        const toggleBtn = document.getElementById('mpChatToggleBtn');
+        const closeBtn = document.getElementById('mpChatCloseBtn');
+        const chatBox = document.getElementById('mpChatContainer');
         const sendBtn = document.getElementById('mpChatSendBtn');
         const chatInput = document.getElementById('mpChatInput');
+
+        if (toggleBtn && chatBox) {
+            toggleBtn.onclick = function() {
+                const isHidden = chatBox.style.display === 'none';
+                chatBox.style.display = isHidden ? 'flex' : 'none';
+                if (isHidden && chatInput) chatInput.focus();
+            };
+        }
+
+        if (closeBtn && chatBox) {
+            closeBtn.onclick = function() {
+                chatBox.style.display = 'none';
+            };
+        }
+
         if (sendBtn && chatInput) {
-            sendBtn.onclick = function() {
+            const doSend = function() {
                 const text = chatInput.value.trim();
                 if (!text) return;
                 chatInput.value = '';
                 sendChat(text);
                 addChatMessage(myName, text, true);
+            };
+
+            sendBtn.onclick = doSend;
+            chatInput.onkeydown = function(e) {
+                if (e.key === 'Enter') {
+                    doSend();
+                }
             };
         }
     }
@@ -440,7 +471,7 @@ window.Multiplayer = (function() {
         const div = document.createElement('div');
         div.style.lineHeight = '1.3';
         div.style.wordBreak = 'break-word';
-        div.innerHTML = `<span style='color:${isMe ? "#70d6ff" : "#9dff96"};font-weight:bold;'>${name}:</span> ${escapeHtml(text)}`;
+        div.innerHTML = `<span style='color:${isMe ? "#ffe600" : "#76e3ff"};font-weight:bold;'>${name}:</span> ${escapeHtml(text)}`;
         msgs.appendChild(div);
         msgs.scrollTop = msgs.scrollHeight;
     }
@@ -476,8 +507,25 @@ window.Multiplayer = (function() {
         const meshToRender = remotePlayerMesh || fallbackMesh;
         if (!meshToRender) return;
 
+        const lerpFactor = 0.25; // Smooth interpolation factor
+
         for (let rp of remotePlayers.values()) {
-            if (rp.modelMatrix) {
+            if (rp.targetX !== undefined) {
+                // Smooth position & rotation towards target
+                rp.currX += (rp.targetX - rp.currX) * lerpFactor;
+                rp.currY += (rp.targetY - rp.currY) * lerpFactor;
+                rp.currZ += (rp.targetZ - rp.currZ) * lerpFactor;
+
+                // Handle angular wrapping for smooth rotation
+                let diffRot = (rp.targetRotY - rp.currRotY);
+                while (diffRot < -Math.PI) diffRot += Math.PI * 2;
+                while (diffRot > Math.PI) diffRot -= Math.PI * 2;
+                rp.currRotY += diffRot * lerpFactor;
+
+                mat4.identity(rp.modelMatrix);
+                mat4.translate(rp.modelMatrix, rp.modelMatrix, [rp.currX, rp.currY, rp.currZ]);
+                mat4.rotateY(rp.modelMatrix, rp.modelMatrix, rp.currRotY);
+
                 gl.uniformMatrix4fv(glCache.dynamic_modelMatrix, gl.FALSE, rp.modelMatrix);
                 meshToRender.render();
             }
