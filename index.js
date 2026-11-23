@@ -29165,6 +29165,22 @@ function BeeSwarmSimulator(DATA){
         })
         
         document.onkeydown=function(e){
+            let chatInput = document.getElementById('mpChatInput')
+            if(chatInput && document.activeElement === chatInput){
+                if(e.key === 'Enter'){
+                    let btn = document.getElementById('mpChatSendBtn')
+                    if(btn) btn.click()
+                } else if(e.key === 'Escape'){
+                    chatInput.blur()
+                }
+                return
+            } else if(e.key === 'Enter'){
+                if(chatInput && document.getElementById('mpChatContainer').style.display === 'flex'){
+                    chatInput.focus()
+                    e.preventDefault()
+                    return
+                }
+            }
             
             let key=e.key.toLowerCase()
 

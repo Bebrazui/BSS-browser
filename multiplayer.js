@@ -51,8 +51,8 @@ window.Multiplayer = (function() {
             console.log('[Multiplayer] Signaling connected:', myId);
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
 
-            mqttClient.subscribe(TOPIC_LOBBIES);
-            mqttClient.subscribe(TOPIC_DIRECT);
+            mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
+            mqttClient.subscribe(TOPIC_DIRECT, { qos: 1 });
 
             if (onReady) onReady();
         });
@@ -139,8 +139,18 @@ window.Multiplayer = (function() {
     function refreshLobbies(callback) {
         pendingLobbiesCallback = callback;
         initSignaling(function() {
-            mqttClient.publish(TOPIC_LOBBIES, JSON.stringify({ type: 'query' }));
-            setTimeout(deliverLobbies, 1000);
+            // Immediate delivery of already known active lobbies
+            deliverLobbies();
+
+            // Query active hosts with 3 quick probes
+            mqttClient.publish(TOPIC_LOBBIES, JSON.stringify({ type: 'query' }), { qos: 1 });
+            setTimeout(() => {
+                if (isMqttConnected) mqttClient.publish(TOPIC_LOBBIES, JSON.stringify({ type: 'query' }));
+            }, 300);
+
+            // Wait a bit and deliver aggregated results
+            setTimeout(deliverLobbies, 800);
+            setTimeout(deliverLobbies, 1500);
         });
     }
 
@@ -154,7 +164,7 @@ window.Multiplayer = (function() {
             maxPlayers: currentLobby.maxPlayers,
             playerCount: peerConnections.size + 1,
             hostId: myId
-        }));
+        }), { retain: true, qos: 1 });
     }
 
     function createLobby(name, maxPlayers, onSuccess, onError) {
@@ -299,6 +309,7 @@ window.Multiplayer = (function() {
                 if (data.type === 'state') {
                     handleRemoteState(peerId, data);
                 } else if (data.type === 'chat') {
+                    addChatMessage(data.name, data.msg);
                     if (localPlayerRef && localPlayerRef.addMessage) {
                         localPlayerRef.addMessage(`[${data.name}]: ${data.msg}`, [100, 255, 100]);
                     }
@@ -354,9 +365,44 @@ window.Multiplayer = (function() {
         localPlayerRef = playerRef;
         initRemoteMesh();
 
+        const chatBox = document.getElementById('mpChatContainer');
+        if (chatBox) chatBox.style.display = 'flex';
+        initChatHandlers();
+
         if (updateInterval) clearInterval(updateInterval);
         updateInterval = setInterval(broadcastState, 50); // 20 updates per sec
         updateUI();
+    }
+
+    function initChatHandlers() {
+        const sendBtn = document.getElementById('mpChatSendBtn');
+        const chatInput = document.getElementById('mpChatInput');
+        if (sendBtn && chatInput) {
+            sendBtn.onclick = function() {
+                const text = chatInput.value.trim();
+                if (!text) return;
+                chatInput.value = '';
+                sendChat(text);
+                addChatMessage(myName, text, true);
+            };
+        }
+    }
+
+    function addChatMessage(name, text, isMe = false) {
+        const msgs = document.getElementById('mpChatMessages');
+        if (!msgs) return;
+        const div = document.createElement('div');
+        div.style.lineHeight = '1.3';
+        div.style.wordBreak = 'break-word';
+        div.innerHTML = `<span style='color:${isMe ? "#70d6ff" : "#9dff96"};font-weight:bold;'>${name}:</span> ${escapeHtml(text)}`;
+        msgs.appendChild(div);
+        msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>'"]/g, tag => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[tag] || tag));
     }
 
     function broadcastState() {
