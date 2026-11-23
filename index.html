@@ -4550,84 +4550,269 @@
 <div id='hoverText' style='background-color:rgb(0,0,0);position:fixed;color:rgb(255,255,255);display:none;text-align:center;padding:5px;z-index:1'></div>
 
 
-<div id='mainMenu' style='position:fixed;z-index:1;background-color:rgb(255,255,255);top:0px;left:0px;bottom:0px;right:0px;'>
-    
-    <canvas id='thumbnailCanv' style='position:fixed;left:50%;top:50%;z-index:-1;transform:translate(-50%,-50%);'></canvas>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+    /* Cinematic Multi-Screen Menu Styles */
+    .menu-screen-container {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+        color: #f1f5f9;
+        overflow: hidden;
+        user-select: none;
+    }
+    .menu-bg-canvas {
+        position: absolute;
+        inset: -5%;
+        width: 110%;
+        height: 110%;
+        background: url('resources/bss_bg.jpg') center/cover no-repeat;
+        animation: menuBgDrift 22s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+        filter: brightness(0.68) contrast(1.1) saturate(1.15);
+    }
+    @keyframes menuBgDrift {
+        0% { transform: scale(1) translate(0, 0); }
+        100% { transform: scale(1.08) translate(-1.5%, -1%); }
+    }
+    .menu-ambient-shade {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 25% 50%, rgba(10,14,20,0.82) 0%, rgba(10,14,20,0.45) 50%, rgba(5,7,10,0.9) 100%),
+                    linear-gradient(90deg, rgba(8,11,16,0.94) 0%, rgba(8,11,16,0.6) 35%, transparent 75%);
+    }
+    .menu-view-pane {
+        position: absolute;
+        inset: 0;
+        padding: 50px 70px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(-30px);
+        transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        box-sizing: border-box;
+    }
+    .menu-view-pane.active {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+    }
+    .menu-nav-btn {
+        position: relative;
+        font-size: 26px;
+        font-weight: 700;
+        color: #94a3b8;
+        background: transparent;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        padding: 10px 0 10px 24px;
+        transition: color 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+    }
+    .menu-nav-btn::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%) scaleX(0);
+        transform-origin: left center;
+        width: 14px;
+        height: 3px;
+        background: #eab308;
+        border-radius: 2px;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .menu-nav-btn:hover {
+        color: #ffffff;
+        padding-left: 32px;
+    }
+    .menu-nav-btn:hover::before {
+        transform: translateY(-50%) scaleX(1);
+    }
+    .menu-back-btn {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #e2e8f0;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 8px 18px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .menu-back-btn:hover {
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+        transform: translateX(-4px);
+    }
+    .menu-card-item {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(255,255,255,0.1);
+        backdrop-filter: blur(12px);
+        padding: 16px 20px;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .menu-card-item:hover {
+        background: rgba(15, 23, 42, 0.95);
+        border-color: rgba(234, 179, 8, 0.45);
+        transform: translateY(-2px);
+    }
+    .menu-gold-btn {
+        background: #eab308;
+        color: #1a1500;
+        border: none;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 8px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .menu-gold-btn:hover {
+        background: #facc15;
+        transform: scale(1.04);
+    }
+    .menu-dashed-btn {
+        background: transparent;
+        border: 1px dashed rgba(234, 179, 8, 0.5);
+        color: #fde047;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .menu-dashed-btn:hover {
+        background: rgba(234, 179, 8, 0.1);
+        border-color: #eab308;
+    }
+</style>
 
-    <div style='position:fixed;left:50%;top:10%;text-align:center;font-size:45px;text-align:center;background-color:rgb(255,255,255,0.6);border-radius:15px;padding:5px;padding-left:25px;padding-right:25px;transform:translate(-50%,-50%);width:5000px;backdrop-filter:blur(10px)'>Bee Swarm Simulator</div>
-    
-    <div style='position:fixed;left:50%;top:50%;transform:translate(-50%,-290%);z-index:2;background:rgba(255,255,255,0.9);padding:8px 16px;border-radius:10px;border:2px solid #555;font-family:comic sans ms;'>
-        <label style='font-size:16px;font-weight:bold;margin-right:8px;'>Nickname:</label>
-        <input id='playerNicknameInput' type='text' maxlength='15' placeholder='Player' style='padding:5px 8px;font-size:16px;border:1px solid #aaa;border-radius:4px;outline:none;font-family:comic sans ms;' />
+<div id='cinematicMenuRoot' class='menu-screen-container'>
+    <div class='menu-bg-canvas'></div>
+    <div class='menu-ambient-shade'></div>
+
+    <!-- Screen 1: Main Title Screen -->
+    <div id='mainMenu' class='menu-view-pane active'>
+        <div>
+            <div style='width:240px;margin-bottom:12px;'>
+                <img src='resources/bss_logo.webp' alt='Bee Swarm Simulator' style='width:100%;filter:drop-shadow(0 10px 24px rgba(0,0,0,0.7));' />
+            </div>
+            
+            <div style='display:flex;align-items:center;gap:10px;margin-bottom:28px;'>
+                <span style='font-size:13px;color:#94a3b8;font-weight:600;'>Никнейм:</span>
+                <input id='playerNicknameInput' type='text' maxlength='15' placeholder='Player' style='background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);padding:6px 12px;border-radius:6px;color:#fff;font-size:14px;outline:none;font-family:inherit;width:160px;' />
+            </div>
+
+            <div style='display:flex;flex-direction:column;gap:6px;'>
+                <button id='mainPlay' class='menu-nav-btn'>Продолжить</button>
+                <button id='mainMultiplayer' class='menu-nav-btn'>Мультиплеер</button>
+                <button id='mainSavesNav' class='menu-nav-btn'>Сохранения</button>
+                <button id='mainInfo' class='menu-nav-btn'>Инструкция</button>
+            </div>
+        </div>
+
+        <div style='font-size:12px;color:#475569;'>
+            Версия 1.2.0 • Nostr P2P Engine
+        </div>
     </div>
 
-    <button id='mainPlay' style='position:fixed;left:50%;top:50%;width:300px;height:55px;background-color:rgb(157, 255, 150);transform:translate(-50%,-160%);font-family:comic sans ms;font-size:30px'>Singleplayer</button>
+    <!-- Screen 2: Multiplayer Screen -->
+    <div id='multiplayerMenu' class='menu-view-pane'>
+        <div>
+            <div style='display:flex;align-items:center;gap:16px;margin-bottom:24px;'>
+                <button id='mp_mainBack' class='menu-back-btn'>← Назад</button>
+                <div style='font-size:24px;font-weight:800;color:#f8fafc;'>Сетевая игра</div>
+                <div id='mpSignalingStatus' style='font-size:12px;color:#10b981;margin-left:auto;'>● Online (Nostr Ready)</div>
+            </div>
 
-    <button id='mainMultiplayer' style='position:fixed;left:50%;top:50%;width:300px;height:55px;background-color:rgb(150, 210, 255);transform:translate(-50%,-45%);font-family:comic sans ms;font-size:30px'>Multiplayer</button>
+            <div style='display:flex;align-items:center;gap:12px;margin-bottom:16px;'>
+                <label style='font-size:13px;color:#94a3b8;font-weight:600;'>Слот сохранения:</label>
+                <select id='mpSelectSave' style='background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;outline:none;font-family:inherit;'>
+                    <option value='new'>New Character</option>
+                </select>
+            </div>
 
-    <button id='mainInfo' style='position:fixed;left:50%;top:50%;width:300px;height:55px;background-color:rgb(248, 129, 129);transform:translate(-50%,70%);font-family:comic sans ms;font-size:22px'>Instructions & Info</button>
+            <div style='display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;'>
+                <input id='mpNewLobbyName' type='text' placeholder='Название лобби' maxlength='20' value='Bee Zone' style='background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);padding:8px 12px;border-radius:6px;color:#fff;font-size:14px;width:180px;outline:none;font-family:inherit;' />
+                <select id='mpNewLobbyMax' style='background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:8px 12px;border-radius:6px;font-size:14px;outline:none;font-family:inherit;'>
+                    <option value='2'>2 игрока</option>
+                    <option value='3'>3 игрока</option>
+                    <option value='4' selected>4 игрока</option>
+                    <option value='5'>5 игроков</option>
+                </select>
+                <button id='mpCreateLobbyBtn' class='menu-gold-btn'>+ Создать комнату</button>
+                <button id='mpRefreshBtn' class='menu-back-btn'>Обновить список</button>
+            </div>
 
-    <button id='mainNew' style='position:fixed;left:50%;top:50%;width:300px;height:55px;background-color:rgb(248, 255, 150);transform:translate(-50%,185%);font-family:comic sans ms;font-size:22px'>Open In New Window</button>
-    
-</div>
+            <div id='mpLobbyStatus' style='font-size:13px;color:#94a3b8;margin-bottom:12px;'></div>
+            <div id='mpLobbyList' style='display:flex;flex-direction:column;gap:10px;max-width:540px;max-height:240px;overflow-y:auto;'></div>
+        </div>
 
-<div id='mainInfoMenu' style='position:fixed;z-index:1;top:0px;left:0px;background-color:rgb(255,255,255);bottom:0px;right:0px;display:none;overflow-y:auto'>
-
-    <canvas id='info_thumbnailCanvCopy' style='position:fixed;left:50%;top:50%;z-index:-1;transform:translate(-50%,-50%);filter:blur(10px)'></canvas>
-
-    <div style='margin-top:20px;font-size:45px;text-align:center;'>Instructions & Info</div>
-    
-    <button id='info_mainBack' style='margin-left:80px;margin-top:-70px;width:120px;height:60px;background-color:rgb(174, 216, 255);transform:translate(-50%,-50%);font-family:comic sans ms;font-size:25px'>Back</button>
-
-    <div style='margin-left:10px;font-size:19px;text-align:center;user-select:text'>Welcome to Bee Swarm Simulator! In this game, you collect pollen from flowers and make honey.<br><br>But you don't do it alone... You are the leader of your own personal swarm of bees!<br><br>Open your inventory by clicking on the egg button. Click on the egg to select it, and then click a slot in your hive to hatch it.<br><br>With your bees, go into the fields to collect pollen. You can collect pollen by swinging your tool or when your bee gathers. After your bag becomes full, go back to your hive and your bees will convert the pollen into honey.<br><br>Talk to bears and NPCs around the mountain and complete their quests for rewards!<br><br>Expand your hive by buying more eggs and level up bees with treats. Upgrade your tools to make more honey. Defeat monsters around the map for loot. Collect rare ingredients to craft powerful gear!<br><br><br><br><br>------------------------------------------<br><br><br><b>Not all features are accurate to the original. Many changes include dialogue, quests, gear stats, loot drops, certain calculations, improved RNG rates, WebGL, and singleplayer. All graphics are recreations of the original, not copied. Gameplay is meant to be accelerated from the original through the use of decreased item & bee rarity + easier & more rewarding quests. Audio is non-existent for this game. Up to date with Beesmas 2022(robo bear, digital bee, and Beesmas features).</b><br><br>Made by Dat<br>Original game and all concepts made by Onett<br>Wingfeather for recreating most the Beesmas Ornaments<br>Info from the BSS Fandom Wiki<br><br><br>1nspired3v motivating me to make Beesmas ;-;<br>Pre-Beesmas bugtesters: HB_The_Pencil, Astro, and more.<br><br><br><br><br><br></div></div>
-
-</div>
-
-<div id='mainSelectMenu' style='position:fixed;z-index:1;top:0px;left:0px;background-color:rgb(255,255,255);bottom:0px;right:0px;display:none;overflow-y:auto'>
-
-    <canvas id='select_thumbnailCanvCopy' style='position:fixed;left:50%;top:50%;z-index:-1;transform:translate(-50%,-50%);filter:blur(10px)'></canvas>
-
-    <div style='margin-top:20px;font-size:45px;text-align:center;'>Saved Games</div>
-    
-    <button id='select_mainBack' style='margin-left:80px;margin-top:-70px;width:120px;height:60px;background-color:rgb(174, 216, 255);transform:translate(-50%,-50%);font-family:comic sans ms;font-size:25px'>Back</button>
-
-    <div style='width:100%;height:50px;'>
-
-        <button id='createNewGame' style='position:absolute;left:50%;width:200px;height:50px;background-color:rgb(225,225,225);transform:translate(-210px,0px);font-family:comic sans ms;font-size:23px;'>New Game</button>
-
-        <button id='createImportedGame' style='position:absolute;left:50%;width:200px;height:50px;background-color:rgb(225,225,225);transform:translate(10px,0px);font-family:comic sans ms;font-size:23px;'>Import Game</button>
-
+        <div style='font-size:12px;color:#475569;'>
+            Прямое P2P подключение между игроками через WebRTC
+        </div>
     </div>
 
-    <br><br>
+    <!-- Screen 3: Saves Screen -->
+    <div id='mainSelectMenu' class='menu-view-pane'>
+        <div>
+            <div style='display:flex;align-items:center;gap:16px;margin-bottom:24px;'>
+                <button id='select_mainBack' class='menu-back-btn'>← Назад</button>
+                <div style='font-size:24px;font-weight:800;color:#f8fafc;'>Сохранения</div>
+            </div>
 
-    <div id='savedGames'></div>
+            <div style='display:flex;gap:12px;margin-bottom:18px;'>
+                <button id='createNewGame' class='menu-gold-btn'>+ Новый персонаж</button>
+                <button id='createImportedGame' class='menu-back-btn'>Импорт сохранения</button>
+            </div>
 
-</div>
+            <div id='savedGames' style='display:flex;flex-direction:column;gap:10px;max-width:560px;max-height:280px;overflow-y:auto;'></div>
+        </div>
 
-<div id='multiplayerMenu' style='position:fixed;z-index:1;top:0px;left:0px;background-color:rgb(255,255,255);bottom:0px;right:0px;display:none;overflow-y:auto;font-family:comic sans ms;'>
-
-    <canvas id='mp_thumbnailCanvCopy' style='position:fixed;left:50%;top:50%;z-index:-1;transform:translate(-50%,-50%);filter:blur(10px)'></canvas>
-
-    <div style='margin-top:20px;font-size:45px;text-align:center;'>Multiplayer Lobbies</div>
-    <div id='mpSignalingStatus' style='text-align:center;font-size:15px;color:#444;margin-top:4px;margin-bottom:15px;'>Connecting to signaling server...</div>
-
-    <button id='mp_mainBack' style='margin-left:80px;margin-top:-70px;width:120px;height:50px;background-color:rgb(174, 216, 255);transform:translate(-50%,-50%);font-family:comic sans ms;font-size:23px;cursor:pointer;border-radius:6px;'>Back</button>
-
-    <div style='display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:12px;'>
-        <label style='font-size:16px;font-weight:bold;'>Character Save:</label>
-        <select id='mpSelectSave' style='font-family:comic sans ms;font-size:16px;padding:5px 10px;border:2px solid #555;border-radius:6px;max-width:240px;'>
-            <option value='new'>New Character</option>
-        </select>
+        <div style='font-size:12px;color:#475569;'>
+            Файлы сохранений хранятся локально в IndexedDB браузера
+        </div>
     </div>
 
-    <div style='display:flex;justify-content:center;gap:15px;margin-bottom:20px;flex-wrap:wrap;'>
-        <input id='mpNewLobbyName' type='text' placeholder='Lobby Name' maxlength='20' value='Bee Zone' style='font-family:comic sans ms;font-size:18px;padding:6px 12px;border:2px solid #555;border-radius:6px;width:180px;'>
-        <select id='mpNewLobbyMax' style='font-family:comic sans ms;font-size:18px;padding:6px 10px;border:2px solid #555;border-radius:6px;'>
-            <option value='2'>2 Players</option>
-            <option value='3'>3 Players</option>
-            <option value='4' selected>4 Players</option>
-            <option value='5'>5 Players</option>
+    <!-- Screen 4: Instructions Screen -->
+    <div id='mainInfoMenu' class='menu-view-pane'>
+        <div style='max-width:680px;'>
+            <div style='display:flex;align-items:center;gap:16px;margin-bottom:20px;'>
+                <button id='info_mainBack' class='menu-back-btn'>← Назад</button>
+                <div style='font-size:24px;font-weight:800;color:#f8fafc;'>Инструкция</div>
+            </div>
+
+            <div style='background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:20px;font-size:14px;color:#cbd5e1;line-height:1.6;max-height:300px;overflow-y:auto;'>
+                Добро пожаловать в Bee Swarm Simulator WebGL!<br><br>
+                Собирайте пыльцу на цветочных полях mountain zone, разводите собственный рой пчел и конвертируйте пыльцу в мёд у своего улья.<br><br>
+                • <b>Управление:</b> WASD / Стрелки — движение, Пробел — прыжок, E — сбор пыльцы / взаимодействие.<br>
+                • <b>Инвентарь:</b> откройте яйцо и кликните на свободный слот улья, чтобы вывести новую пчелу.<br>
+                • <b>Мультиплеер:</b> играйте вместе с друзьями по сети через децентрализованный P2P WebRTC.
+            </div>
+        </div>
+
+        <div style='font-size:12px;color:#475569;'>
+            Onett (Original BSS) • Dat • Wingfeather • Antigravity
+        </div>
+    </div>
+</div>
         </select>
         <button id='mpCreateLobbyBtn' style='font-family:comic sans ms;font-size:18px;padding:6px 18px;background:#9dff96;border:2px solid black;border-radius:6px;cursor:pointer;'>Create Lobby</button>
         <button id='mpRefreshBtn' style='font-family:comic sans ms;font-size:18px;padding:6px 18px;background:#ffd596;border:2px solid black;border-radius:6px;cursor:pointer;'>Refresh List</button>

@@ -123,21 +123,21 @@ function main(){
     }
 
     document.getElementById('mainPlay').onclick=function(){
-        
-        copyThumbnail('select')
-    
-        document.getElementById('mainMenu').style.display='none'
-        document.getElementById('mainSelectMenu').style.display='block'
-    
-        document.getElementById('createNewGame').onclick=function(){
-    
-            document.getElementById('mainSelectMenu').style.display='none'
-            document.getElementById('mainMenu').style.display='none'
-    
-            BeeSwarmSimulator({id:Date.now(),name:'Untitled Save'})
-        }
-    
-        document.getElementById('createImportedGame').onclick=function(){
+        // Directly enter game with last save or new game
+        loadFromDB().then(res => {
+            if (res && res.length > 0) {
+                // Load most recently saved game
+                res.sort((a,b) => (b.data.lastSaved || 0) - (a.data.lastSaved || 0));
+                const last = res[0];
+                if(document.getElementById('cinematicMenuRoot')) document.getElementById('cinematicMenuRoot').style.display='none';
+                BeeSwarmSimulator({ id: last.id, name: last.data.name, saveCode: last.data.saveCode });
+            } else {
+                switchMenuScreen('mainSelectMenu');
+            }
+        }).catch(() => {
+            switchMenuScreen('mainSelectMenu');
+        });
+    }
     
             alert("\nTo import a game, you'll need a string containing the saved data of the game. Copy the string, and then use CTRL+V in this program to start the game.\n\nAn invalid code will create an error message. There is a chance errors in the save code are not detected and pass through. This may corrupt the game, resulting in crashes.")
         }
@@ -278,20 +278,29 @@ function main(){
         })
     }
     
+    function switchMenuScreen(targetId) {
+        const screens = ['mainMenu', 'mainInfoMenu', 'mainSelectMenu', 'multiplayerMenu'];
+        screens.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('active');
+        });
+        const target = document.getElementById(targetId);
+        if (target) target.classList.add('active');
+    }
+
+    const savesNavBtn = document.getElementById('mainSavesNav');
+    if (savesNavBtn) {
+        savesNavBtn.onclick = function() {
+            switchMenuScreen('mainSelectMenu');
+        };
+    }
+
     document.getElementById('mainInfo').onclick=function(){
-    
-        copyThumbnail('info')
-        
-        document.getElementById('mainMenu').style.display='none'
-        document.getElementById('mainInfoMenu').style.display='block'
+        switchMenuScreen('mainInfoMenu');
     }
     
     document.getElementById('info_mainBack').onclick=document.getElementById('select_mainBack').onclick=function(){
-    
-        document.getElementById('mainInfoMenu').style.display='none'
-        document.getElementById('mainSelectMenu').style.display='none'
-        if(document.getElementById('multiplayerMenu')) document.getElementById('multiplayerMenu').style.display='none'
-        document.getElementById('mainMenu').style.display='block'
+        switchMenuScreen('mainMenu');
     }
 
     // Multiplayer Menu logic
@@ -338,18 +347,15 @@ function main(){
 
     if(mpBtn){
         mpBtn.onclick=function(){
-            copyThumbnail('mp')
-            document.getElementById('mainMenu').style.display='none'
-            mpMenu.style.display='block'
-            populateMpSaveSelect()
-            triggerRefreshLobbies()
+            switchMenuScreen('multiplayerMenu');
+            populateMpSaveSelect();
+            triggerRefreshLobbies();
         }
     }
 
     if(mpBackBtn){
         mpBackBtn.onclick=function(){
-            mpMenu.style.display='none'
-            document.getElementById('mainMenu').style.display='block'
+            switchMenuScreen('mainMenu');
         }
     }
 
@@ -362,24 +368,24 @@ function main(){
             mpLobbyList.innerHTML=''
             lobbies.forEach(function(lob){
                 let item=document.createElement('div')
-                item.style.cssText='width:460px;background:rgba(255,255,255,0.9);border:2px solid #333;border-radius:8px;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;'
+                item.className='menu-card-item'
                 let isFull=lob.players>=lob.maxPlayers
                 item.innerHTML=`
                     <div>
-                        <div style='font-size:20px;font-weight:bold;'>${lob.name}</div>
-                        <div style='font-size:15px;color:#555;'>Players: ${lob.players} / ${lob.maxPlayers}</div>
+                        <div style='font-size:16px;font-weight:700;color:#fff;'>${lob.name}</div>
+                        <div style='font-size:12px;color:#94a3b8;margin-top:2px;'>Игроки: ${lob.players} / ${lob.maxPlayers}</div>
                     </div>
-                    <button style='font-family:comic sans ms;font-size:16px;padding:6px 16px;border-radius:6px;border:2px solid #000;background:${isFull?'#bbb':'#9dff96'};cursor:${isFull?'not-allowed':'pointer'};' ${isFull?'disabled':''}>${isFull?'Full':'Join'}</button>
+                    <button class='menu-gold-btn' style='${isFull?"background:#64748b;color:#1e293b;cursor:not-allowed;":""}' ${isFull?'disabled':''}>${isFull?'Заполнено':'Войти'}</button>
                 `
                 let joinBtn=item.querySelector('button')
                 if(!isFull){
                     joinBtn.onclick=function(){
-                        mpLobbyStatus.innerHTML='Connecting to lobby...'
+                        mpLobbyStatus.innerHTML='Подключение к '+lob.name+'...'
                         window.Multiplayer.joinLobby(lob.id,function(lobby){
-                            mpMenu.style.display='none'
+                            document.getElementById('cinematicMenuRoot').style.display='none'
                             BeeSwarmSimulator(getSelectedMpGameData('Multiplayer - '+lobby.name))
                         },function(err){
-                            alert('Failed to join lobby: '+err)
+                            alert('Ошибка подключения: '+err)
                             triggerRefreshLobbies()
                         })
                     }
@@ -401,7 +407,7 @@ function main(){
             let maxP=maxInput?maxInput.value:4
             mpLobbyStatus.innerHTML='Creating lobby...'
             window.Multiplayer.createLobby(name,maxP,function(lobby){
-                mpMenu.style.display='none'
+                if(document.getElementById('cinematicMenuRoot')) document.getElementById('cinematicMenuRoot').style.display='none'
                 BeeSwarmSimulator(getSelectedMpGameData('Host - '+lobby.name))
             },function(err){
                 alert('Could not create lobby: '+err)
