@@ -93,6 +93,7 @@ window.Multiplayer = (function() {
 
         const eventTemplate = {
             kind: 20001, // Ephemeral custom event
+            pubkey: pk,
             created_at: Math.floor(Date.now() / 1000),
             tags: [['t', 'bss-v2']],
             content: JSON.stringify(payload)
