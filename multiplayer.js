@@ -75,7 +75,10 @@ window.Multiplayer = (function() {
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
 
             mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
-            mqttClient.subscribe(TOPIC_DIRECT, { qos: 1 });
+            mqttClient.subscribe(TOPIC_DIRECT, { qos: 1 }, function(err) {
+                if (err) console.error('[Signaling] Failed to subscribe to direct topic:', err);
+                else console.log('[Signaling] Subscribed to direct topic:', TOPIC_DIRECT);
+            });
 
             while (connectQueue.length > 0) {
                 const cb = connectQueue.shift();
@@ -86,8 +89,11 @@ window.Multiplayer = (function() {
         mqttClient.on('message', function(topic, payload) {
             try {
                 const data = JSON.parse(payload.toString());
+                console.log('[Multiplayer MQTT msg]', topic, data.type, 'from:', data.from, 'host:', data.hostId);
                 handleSignalingMessage(topic, data);
-            } catch(e) {}
+            } catch(e) {
+                console.warn('[Multiplayer MQTT parse err]', e);
+            }
         });
 
         mqttClient.on('error', function(err) {
@@ -151,7 +157,8 @@ window.Multiplayer = (function() {
         const now = Date.now();
         const list = [];
         for (let [id, lob] of knownLobbies) {
-            if (now - lob.timestamp < 10000) {
+            // Keep lobby active for 3.5 seconds without announce
+            if (now - lob.timestamp < 3500) {
                 list.push(lob);
             } else {
                 knownLobbies.delete(id);
@@ -190,7 +197,7 @@ window.Multiplayer = (function() {
             maxPlayers: currentLobby.maxPlayers,
             playerCount: peerConnections.size + 1,
             hostId: myId
-        }), { retain: true, qos: 1 });
+        }), { retain: false, qos: 1 });
     }
 
     function createLobby(name, maxPlayers, onSuccess, onError) {
@@ -299,7 +306,8 @@ window.Multiplayer = (function() {
 
             joinTimeout = setTimeout(() => {
                 if (connObj.dc && connObj.dc.readyState !== 'open') {
-                    if (onError) onError('P2P connection timed out');
+                    console.warn('[WebRTC] Timeout. Host state:', pc.connectionState, 'ICE state:', pc.iceConnectionState, 'Signaling:', pc.signalingState);
+                    if (onError) onError('Failed to join lobby: P2P connection timed out (Хост недоступен или уже закрыл лобби)');
                     peerConnections.delete(hostId);
                     try { pc.close(); } catch(e){}
                 }
