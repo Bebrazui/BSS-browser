@@ -62,10 +62,11 @@ window.Multiplayer = (function() {
 
         updateStatusIndicator('Connecting to signaling broker...');
         mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-            clientId: 'bss_' + myId,
+            clientId: 'bss_' + myId + '_' + Math.random().toString(36).substr(2, 4),
             clean: true,
-            connectTimeout: 8000,
-            reconnectPeriod: 2500
+            keepalive: 60,
+            connectTimeout: 10000,
+            reconnectPeriod: 2000
         });
 
         mqttClient.on('connect', function() {
@@ -74,9 +75,11 @@ window.Multiplayer = (function() {
             console.log('[Multiplayer] Signaling connected:', myId);
             updateStatusIndicator('Online (Signaling Ready)', '#2ecc71');
 
-            mqttClient.subscribe(TOPIC_LOBBIES, { qos: 1 });
+            mqttClient.subscribe(TOPIC_LOBBIES, { qos: 0 });
             if (roomTopic) {
-                mqttClient.subscribe(roomTopic, { qos: 1 });
+                mqttClient.subscribe(roomTopic, { qos: 0 }, function() {
+                    console.log('[MQTT] Resubscribed to room:', roomTopic);
+                });
             }
 
             while (connectQueue.length > 0) {
@@ -318,13 +321,21 @@ window.Multiplayer = (function() {
                     return pc.setLocalDescription(offer);
                 }).then(() => {
                     console.log('[Client] Sending offer to host:', hostId, 'in room:', roomTopic);
-                    mqttClient.publish(roomTopic, JSON.stringify({
+                    const offerPayload = JSON.stringify({
                         type: 'offer',
                         from: myId,
                         target: hostId,
                         offer: pc.localDescription,
                         playerName: myName
-                    }));
+                    });
+                    mqttClient.publish(roomTopic, offerPayload);
+                    // Retry send offer after 600ms if no answer yet
+                    setTimeout(() => {
+                        if (connObj.pc.signalingState === 'have-local-offer') {
+                            console.log('[Client] Retrying offer send...');
+                            mqttClient.publish(roomTopic, offerPayload);
+                        }
+                    }, 600);
                 });
 
                 joinTimeout = setTimeout(() => {
