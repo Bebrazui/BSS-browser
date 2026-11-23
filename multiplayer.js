@@ -457,14 +457,19 @@ window.Multiplayer = (function() {
     }
 
     function updateUI() {
+        const count = peerConnections.size + 1;
         const el = document.getElementById('mpPlayerCount');
         if (el) {
             if (!currentLobby) {
                 el.style.display = 'none';
             } else {
                 el.style.display = 'block';
-                el.innerHTML = `Lobby: <b>${currentLobby.name}</b> | Players: <b>${peerConnections.size + 1}/${currentLobby.maxPlayers}</b> (P2P)`;
+                el.innerHTML = `Lobby: <b>${currentLobby.name}</b> | Players: <b>${count}/${currentLobby.maxPlayers}</b> (P2P)`;
             }
+        }
+        const chatCount = document.getElementById('mpChatOnlineCount');
+        if (chatCount) {
+            chatCount.innerHTML = `Online: ${count}`;
         }
     }
 
