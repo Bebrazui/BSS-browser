@@ -1414,14 +1414,17 @@ box(x,y+1*0.5,z,1.7,1,1.7,[0,a,0],[0.7,0.7,0.7],false,false);
 cylinder(x,y+3.75,z,0.2,0.5,8,0.7,0.7,0.7,1,-90,180,0);
 }
 
+if(!customStand){
 cylinder(x+_x,y+_y,z+_z,3.15,0.1,17,1,1,1,1,-90,0,0);
 cylinder(x+_x,y+_y,z+_z,3.35,0.05,17,r,g,b,1,-90,0,0);
+}
 
 box(x,y+3.5*0.5,z,2,3.5,2,[0,a,0],[1,1,1],true,false,false);
 }
 
 // shop(11.25,-1.5,14.75,45,1,0.1,0.1,-1.25,0,-1.25,true) // completely replaced by custom 3D Egg Shop
-shop(10,-1.5,13.5,45,1,0.1,0.1,0,0,0,true)
+// Basic Egg shop pedestal handled by custom 3D Egg Shop
+// shop(10,-1.5,13.5,45,1,0.1,0.1,0,0,0,true)
 shop(23.5,-2.5,41,0,1,0.1,0.1,0,1.15,-2)
 shop(-30.5,2,46,0,1.2,0.4,1.2,2,0,0)
 shop(32,8.75,50.25,45,1,0.1,0.1,1.5,0,-1.5)
